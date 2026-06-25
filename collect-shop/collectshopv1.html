@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IP 玩偶公仔收藏展示館</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link rel="stylesheet" href="collectshopv1.css">
+</head>
+<body>
+
+  <div id="app">
+    <header>
+      <h1>收藏秘密區</h1>
+    </header>
+
+    <div class="app-container-drawers">
+
+      <!-- 左側新增面板 -->
+      <aside class="drawer-box left-drawer">
+        <div class="drawer-handle"></div>
+        <div class="form-panel">
+          <div class="form-header">
+            <i class="fa-solid fa-square-plus" aria-hidden="true"></i> ❤️❤️❤️❤️❤️收藏
+          </div>
+          <div class="form-body">
+            <form @submit.prevent="addCollection">
+
+              <div class="form-group">
+                <label for="itemName">項目名稱 *</label>
+                <input type="text" id="itemName" v-model="newItem.name" class="form-control" placeholder="例如:絕版IP.." required>
+              </div>
+
+              <div class="form-group">
+                <label for="itemCategory">焦點分類區</label>
+                <select id="itemCategory" v-model="newItem.category" class="form-control">
+                  <option>玩偶</option>
+                  <option>公仔</option>
+                  <option>IP</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="itemImgUrl">圖片網址</label>
+                <input type="url" id="itemImgUrl" v-model="newItem.imgUrl" class="form-control" placeholder="請貼上連結">
+              </div>
+
+              <div class="form-group">
+                <label for="itemIntro">收藏分類簡介</label>
+                <textarea id="itemIntro" v-model="newItem.intro" class="form-control" rows="2" placeholder="勿忘留下記錄..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label id="ratingLabel">推薦程度</label>
+                <div class="rating-stars" role="group" aria-labelledby="ratingLabel" aria-live="polite">
+                  <button type="button" v-for="star in 5" :key="star" :aria-label="'評分 ' + star + ' 分'"
+                    :aria-pressed="star <= newItem.recommendation" class="a11y-rating-btn"
+                    @click="newItem.recommendation = star">
+                    <i class="fa-solid fa-star" :class="{'active-star': star <= newItem.recommendation}"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label id="preferenceLabel">心動喜好度</label>
+                <div class="rating-stars" role="group" aria-labelledby="preferenceLabel" aria-live="polite">
+                  <button type="button" v-for="heart in 5" :key="heart" :aria-label="'喜好 ' + heart + ' 分'"
+                    :aria-pressed="heart <= newItem.preference" class="a11y-rating-btn"
+                    @click="newItem.preference = heart">
+                    <i class="fa-solid fa-heart" :class="{'active-heart': heart <= newItem.preference}"></i>
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" class="btn-submit">加入收藏清單</button>
+            </form>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 右側展示區 -->
+      <div class="right-box-container">
+        <main class="drawer-box">
+          <div class="main-display-area">
+
+            <!-- 數據與按鈕控制列 -->
+            <div class="stats-bar" v-if="collections.length > 0">
+              <div class="stats-counter-group">
+                <div class="stat-item"><span class="num">{{ collections.length }}</span><span class="label">總頁數</span></div>
+                <div class="stat-item"><span class="num">{{ stats.plush }}</span><span class="label">玩偶冊</span></div>
+                <div class="stat-item"><span class="num">{{ stats.figure }}</span><span class="label">公仔冊</span></div>
+                <div class="stat-item"><span class="num">{{ stats.ip }}</span><span class="label">IP衍生</span></div>
+              </div>
+
+              <div class="action-btn-group">
+                <button type="button" @click="toggleManageMode" class="btn-action-light btn-danger-hover"
+                  :class="{'btn-managing-active': isManageMode}"
+                  :title="isManageMode ? '確認或取消刪除' : '開啟勾選刪除模式'"
+                  :aria-label="isManageMode ? '結束選擇清空' : '開啟選擇清空'">
+                  <i :class="isManageMode ? 'fa-solid fa-square-check' : 'fa-regular fa-square-check'" aria-hidden="true"></i>
+                  {{ isManageMode ? `確認刪除選取 (${selectedIds.length})` : '選擇清空' }}
+                </button>
+
+                <button type="button" v-if="isManageMode" @click="cancelManageMode" class="btn-action-light" title="取消選擇並返回">
+                  取消
+                </button>
+
+                <button type="button" @click="clearAll" class="btn-action-light btn-danger-hover" title="清空全部珍藏">
+                  <i class="fa-solid fa-trash-can" aria-hidden="true"></i> 清空全部
+                </button>
+              </div>
+            </div>
+
+            <!-- 分類頁籤 -->
+            <div class="filter-tabs" v-if="collections.length > 0 && !isManageMode">
+              <button v-for="t in ['全部', '玩偶', '公仔', 'IP']" :key="t"
+                :class="['filter-btn', {active: currentFilter === t}]"
+                @click="currentFilter = t; currentPage = 0">{{ t }}</button>
+            </div>
+
+            <!-- 卡片包覆區 -->
+            <div class="cards-wrapper-zone">
+
+              <div class="empty-area" v-if="filteredCollections.length === 0">
+                <div class="empty-status-overlay">
+                  <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+                  <span>empty-status: 該分類的分格收藏架上暫時沒有符合的收藏品哦。</span>
+                </div>
+              </div>
+
+              <div class="collection-track-container" v-else>
+                <transition-group name="card" tag="div"
+                  :class="['card-grid', { 'manage-mode-vertical': isManageMode }]">
+
+                  <div class="book-card" v-for="item in filteredCollections" :key="item.id">
+
+                    <!-- 選擇清空的核取方塊 -->
+                    <div class="manage-checkbox-wrapper" v-if="isManageMode">
+                      <input type="checkbox" :id="'chk-' + item.id" :value="item.id" v-model="selectedIds" class="manage-checkbox">
+                      <label :for="'chk-' + item.id" class="sr-only">選取 {{ item.name }}</label>
+                    </div>
+
+                    <!-- 左半頁：圖片 -->
+                    <div class="page-left">
+                      <img :src="item.imgUrl || 'https://i.giphy.com/xUOxfjsW9fWPqEWouI.webp'"
+                        onerror="this.onerror=null; this.src='https://i.giphy.com/xUOxfjsW9fWPqEWouI.webp';"
+                        :alt="item.name + '的卡片圖片'">
+                    </div>
+
+                    <!-- 右半頁：內容 -->
+                    <div class="page-right">
+                      <h3 class="book-title" :title="item.name">{{ item.name }}</h3>
+                      <div class="book-tag-category">
+                        <i class="fa-solid fa-tag" aria-hidden="true"></i> {{ item.category }}
+                      </div>
+
+                      <div class="book-meta-ratings">
+                        <div>
+                          <span>推薦度：</span>
+                          <i v-for="n in 5" :key="n" class="fa-solid fa-star"
+                            :class="{'active-star': n <= item.recommendation}" aria-hidden="true"></i>
+                          <span class="sr-only">({{ item.recommendation }}分)</span>
+                        </div>
+                        <div>
+                          <span>喜好度：</span>
+                          <i v-for="n in 5" :key="n" class="fa-solid fa-heart"
+                            :class="{'active-heart': n <= item.preference}" aria-hidden="true"></i>
+                          <span class="sr-only">({{ item.preference }}分)</span>
+                        </div>
+                      </div>
+
+                      <div class="book-intro-container">
+                        <div class="book-intro" :class="{'collapsed': !item.isExpanded}">
+                          {{ item.intro || '尚未編寫對應的收藏記錄。' }}
+                        </div>
+                        <button v-if="item.intro && item.intro.length > 25" class="toggle-intro-btn"
+                          @click="item.isExpanded = !item.isExpanded">
+                          {{ item.isExpanded ? '收合詳細介紹 ▲' : '展開詳細介紹 ▼' }}
+                        </button>
+                      </div>
+
+                      <button v-if="!isManageMode" class="delete-btn" @click="removeItem(item.id)"
+                        :title="'撕除' + item.name + '這一頁'">
+                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                      </button>
+                    </div>
+
+                  </div>
+                </transition-group>
+              </div>
+
+              <!-- 輪播箭頭 -->
+              <div class="carousel-nav" v-if="totalPages > 1 && !isManageMode">
+                <button class="nav-arrow" @click="moveCarousel(-1)" aria-label="上一頁">
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span class="page-indicator">{{ currentPage + 1 }} / {{ totalPages }}</span>
+                <button class="nav-arrow" @click="moveCarousel(1)" aria-label="下一頁">
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </main>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    const swalCustom = Swal.mixin({
+      confirmButtonColor: '#d63031',
+      cancelButtonColor: '#b2bec3',
+      confirmButtonText: '確定刪除',
+      cancelButtonText: '取消',
+      reverseButtons: true,
+      customClass: {
+        popup: 'swal-custom-popup',
+        title: 'swal-custom-title',
+        htmlContainer: 'swal-custom-html',
+      }
+    });
+
+    const app = createApp({
+      setup() {
+        const currentFilter = ref('全部');
+        const currentPage = ref(0);
+        const pageSize = 4;
+        const newItem = ref({ name: '', category: '公仔', imgUrl: '', intro: '', recommendation: 5, preference: 5 });
+        const isManageMode = ref(false);
+        const selectedIds = ref([]);
+
+        const collections = ref([
+          { id: 101, name: 'Carebear', category: '玩偶', imgUrl: 'https://tse4.mm.bing.net/th/id/OIP.o9g6ZlTYx3cQykmJvz5E8QHaHa?w=1080&h=1080&rs=1&pid=ImgDetMain&o=7&rm=3', intro: '經典的泰迪絨捲毛，安靜地坐在展示櫃角落，就能為整個櫥窗注入滿滿的法式復古儀式感 。', recommendation: 5, preference: 5, isExpanded: false },
+          { id: 102, name: '小老兔', category: '玩偶', imgUrl: 'https://i5.walmartimages.com/asr/0fe83c20-bd80-4a85-a693-339793313c5e.b208bd4782266c1d2285fabc85984c5a.jpeg?odnHeight=612&odnWidth=612&odnBg=FFFFFF', intro: '一雙軟萌的大豎耳與文青風的微笑，灰色倒三角小鼻是它的神祕武器，收藏櫃的治癒系明星。', recommendation: 4, preference: 5, isExpanded: false },
+          { id: 103, name: '抹茶歐蕾・長毛怪', category: '玩偶', imgUrl: 'https://th.bing.com/th/id/R.1deed4811ffa3a14bf281056f06eb2b1?rik=20xKVxxTGn8Y4g&riu=http%3a%2f%2fsource.shop.busionline.com%2fdt36y5dm0q0owg080cccw0ggg4w880o1678537975.jpeg&ehk=jOIrOQQhLAgv%2boApCulvDmt9VqAMD5X2cx%2buyhjbiko%3d&risl=&pid=ImgRaw&r=0', intro: '青草綠長毛搭上鮮黃小手，亮粉色嘴巴裡還藏著叛逆的白色小鋸齒。', recommendation: 5, preference: 4, isExpanded: false },
+          { id: 201, name: 'POP MART-水藍色夢幻共鳴', category: '公仔', imgUrl: 'https://tse3.mm.bing.net/th/id/OIP.XwZrPPcFBYBSFDQntUxN3AHaJ7?w=600&h=805&rs=1&pid=ImgDetMain&o=7&rm=3', intro: '來自深海的潮流訊號！淡藍色調融合俏皮靈魂，讓POP-MART瞬間變身夢幻系太空探索者。', recommendation: 5, preference: 5, isExpanded: false },
+          { id: 301, name: '抱抱龍', category: 'IP', imgUrl: 'https://shop.r10s.jp/realize-store/cabinet/gachapon/g/toysspm00009.jpg', intro: '擁有全宇宙最威猛的外表，卻配上全宇宙最脆弱的玻璃心！雖然天天擔心自己不夠嚇人，但這雙「反差萌短手」和無辜的大眼睛，早就把大家的心妥妥地俘虜啦！', recommendation: 5, preference: 5, isExpanded: false },
+          { id: 302, name: 'POP MART-光感能量滿載', category: '公仔', imgUrl: 'https://tse1.mm.bing.net/th/id/OIP.drx4h_dmY52X8I-iWVpDggHaJQ?rs=1&pid=ImgDetMain&o=7&rm=3', intro: '明亮飽滿的黃色太空裝，穿出無敵的潮流自信！像是裝載了滿滿的太陽能量，走進哪裡都是視覺焦點。', recommendation: 5, preference: 5, isExpanded: false }
+        ]);
+
+        const stats = computed(() => ({
+          plush: collections.value.filter(c => c.category === '玩偶').length,
+          figure: collections.value.filter(c => c.category === '公仔').length,
+          ip: collections.value.filter(c => c.category === 'IP').length,
+        }));
+
+        const baseFiltered = computed(() => {
+          if (currentFilter.value === '全部') return collections.value;
+          return collections.value.filter(c => c.category === currentFilter.value);
+        });
+
+        const totalPages = computed(() => Math.max(1, Math.ceil(baseFiltered.value.length / pageSize)));
+
+        const filteredCollections = computed(() => {
+          const safeePage = Math.min(currentPage.value, totalPages.value - 1);
+          const start = safeePage * pageSize;
+          return baseFiltered.value.slice(start, start + pageSize);
+        });
+
+        const addCollection = () => {
+          if (!newItem.value.name) return;
+          collections.value.push({
+            id: Date.now(),
+            name: newItem.value.name,
+            category: newItem.value.category,
+            imgUrl: newItem.value.imgUrl,
+            intro: newItem.value.intro,
+            recommendation: newItem.value.recommendation,
+            preference: newItem.value.preference,
+            isExpanded: false
+          });
+          newItem.value = { name: '', category: '公仔', imgUrl: '', intro: '', recommendation: 5, preference: 5 };
+          Swal.fire({ icon: 'success', title: '加入成功！', text: '新珍藏已加入收藏清單 ✨', timer: 1500, showConfirmButton: false });
+        };
+
+        const removeItem = async (id) => {
+          const item = collections.value.find(i => i.id === id);
+          const result = await swalCustom.fire({
+            title: '確定要撕除這頁嗎？',
+            html: `<span style="color:#636e72">「${item?.name}」將從珍藏清單中移除</span>`,
+            icon: 'warning',
+            showCancelButton: true,
+          });
+          if (result.isConfirmed) {
+            collections.value = collections.value.filter(i => i.id !== id);
+            Swal.fire({ icon: 'success', title: '已移除', timer: 1000, showConfirmButton: false });
+          }
+        };
+
+        const clearAll = async () => {
+          const result = await swalCustom.fire({
+            title: '清空所有珍藏？',
+            html: '<span style="color:#636e72">此操作無法恢復，所有收藏將全部刪除！</span>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '全部清空',
+          });
+          if (result.isConfirmed) {
+            collections.value = [];
+            cancelManageMode();
+            Swal.fire({ icon: 'success', title: '已全部清空', timer: 1000, showConfirmButton: false });
+          }
+        };
+
+        const toggleManageMode = async () => {
+          if (!isManageMode.value) {
+            isManageMode.value = true;
+            return;
+          }
+          if (selectedIds.value.length === 0) {
+            Swal.fire({ icon: 'info', title: '尚未勾選', text: '請先勾選想要刪除的收藏品！', confirmButtonColor: '#6c5ce7' });
+            return;
+          }
+          const result = await swalCustom.fire({
+            title: `確定刪除 ${selectedIds.value.length} 項？`,
+            html: '<span style="color:#636e72">已勾選的珍藏將全數移除</span>',
+            icon: 'warning',
+            showCancelButton: true,
+          });
+          if (result.isConfirmed) {
+            collections.value = collections.value.filter(item => !selectedIds.value.includes(item.id));
+            cancelManageMode();
+            Swal.fire({ icon: 'success', title: '刪除完成', timer: 1000, showConfirmButton: false });
+          }
+        };
+
+        const cancelManageMode = () => {
+          isManageMode.value = false;
+          selectedIds.value = [];
+        };
+
+        const moveCarousel = (direction) => {
+          currentPage.value = (currentPage.value + direction + totalPages.value) % totalPages.value;
+        };
+
+        return {
+          newItem, collections, currentFilter, currentPage, totalPages,
+          stats, filteredCollections, isManageMode, selectedIds,
+          addCollection, removeItem, clearAll, toggleManageMode, cancelManageMode, moveCarousel
+        };
+      },
+    });
+
+    app.mount('#app');
+  </script>
+</body>
+</html>
